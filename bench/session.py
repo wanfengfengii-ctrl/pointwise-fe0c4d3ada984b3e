@@ -117,6 +117,7 @@ class BenchSession:
         self.pending = pending
         self.slots = SlotPool()
         self.writer = DeviceWriter(self.slots)
+        self.prepared: set[int] = set()
         self._closed = False
         self._position = 0
         self._labels: dict[str, SlotLease] = {}
@@ -161,6 +162,7 @@ class BenchSession:
             self.pending.clear()
             self._notifications.clear()
             self._labels.clear()
+            self.prepared.clear()
             self._closed = True
 
     def __enter__(self) -> 'BenchSession':
@@ -180,3 +182,20 @@ def start(db: sqlite3.Connection, procedure_key: tuple[str, str], recording: dic
     index = RunIndex(db)
     session_id = index.open_session(plan.shift, procedure)
     return BenchSession(index, session_id, procedure, plan, PendingRegions())
+
+
+def _transfer():
+    from capture import transfer as module
+    return module
+
+
+def prepare(session: BenchSession, prefix, multiplier):
+    return _transfer().prepare(session, prefix, multiplier)
+
+
+def move(session: BenchSession, number: int, expected: SlotLease, target: str, *, before_commit=None):
+    return _transfer().move(session, number, expected, target, before_commit=before_commit)
+
+
+def trigger(session: BenchSession, number: int, carrier: SlotLease, suffix):
+    return _transfer().trigger(session, number, carrier, suffix)

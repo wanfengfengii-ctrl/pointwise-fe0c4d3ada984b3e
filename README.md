@@ -11,13 +11,22 @@ python3 -B check_project.py
 python3 -B -m review.readout demo
 ```
 
+触发前换槽的夹具提供 `baseline`、`verify` 和 `demo`：`verify` 先跑原回归再核验换槽与失败续办，`demo` 打印停源重开领取的两段出处。运行清单的 `verify`、`demo` 指向该夹具。
+
+```sh
+python3 -B transfer_fixture.py verify
+python3 -B transfer_fixture.py demo
+```
+
 可直接运行同一套 unittest 用例。
 
 ```sh
 python3 -B -m unittest discover -s tests
 ```
 
-演示从 `samples/procedures.json` 装入规程，以 `samples/day.json` 重放一天的录制。程序在临时 SQLite 账库里模拟一次真实的签存写入失败。第 41 次交班失败时已经归还 A 槽，第 42 次仍占用 B 槽等待量程，第 43 次复用 A 槽。关源、重开后分别签出 `[20,40]` 和 `[300,500]`，班次结果为 `[41,43]`、`500 mm/s`。演示核对实测出处和下游班次结论后输出情景记录。
+`review.readout demo` 从 `samples/procedures.json` 装入规程，以 `samples/day.json` 重放一天的录制。程序在临时 SQLite 账库里模拟一次真实的签存写入失败。第 41 次交班失败时已经归还 A 槽，第 42 次仍占用 B 槽等待量程，第 43 次复用 A 槽。关源、重开后分别签出 `[20,40]` 和 `[300,500]`，班次结果为 `[41,43]`、`500 mm/s`。演示核对实测出处和下游班次结论后输出情景记录。
+
+`transfer_fixture.py` 用同一 motor-vibration 第 1 版规程和 day 班演示触发前换槽：第 41 次在 A 的首次占用录 `[2,4]` 前段，换至 B 后 A 立即用于第 42 次；只接纳 B 实际触发写出的后段 `[-9]`，签出 `[20,40,-90]`、峰值 `90 mm/s`。`verify` 另测目标忙与交接中断后仍从原槽触发，`demo` 停源重开后按原号领回两段原码、各自实写实例和同一首执。
 
 ## Python 接口
 
@@ -34,6 +43,9 @@ python3 -B -m unittest discover -s tests
 | `capture.resume.status(db, session_id, number)` | 返回 `unknown`、`pending` 或 `held`。已接管时包含完整原值、归还确认及冻结规程。 |
 | `capture.resume.confirm_return(session, number)` | 以持久接管依据归还或补记对应的旧槽实例，成功返回 `HeldCapture`。 |
 | `handover.publish.publish(db, number)` | 返回 `unknown`、`pending` 或带 `IssuedRecord` 的 `issued`。SQLite 写入或提交异常向调用方报告，之后可按原号重办。 |
+| `bench.session.prepare(session, prefix, multiplier)` | 按普通分槽规则分配一个新采集号并实写前段，返回 `(number, carrier)`。`prefix` 为含至少一个真正整数的列表或元组，倍率须属冻结规程。 |
+| `bench.session.move(session, number, expected, target, *, before_commit=None)` | 把前段保管和触发权移到另一槽，成功返回同会话同采集号的新 `SlotLease`。目标忙抛 `SlotsFull`，原槽不变；`before_commit` 在交接提交边界前调用，回调异常或提交失败都保留原凭据的触发权。 |
+| `bench.session.trigger(session, number, carrier, suffix)` | 按当前凭据实际写一次后段，返回 `RegionReady` 反馈（`source` 为 `RegionSource(carrier, 'waveform')`，`value` 为实写后段）。反馈仍待投送。 |
 | `review.readout.get(db, number)` | 返回已签档案及首执。无成果返回 `None`。`review.provenance.verify_provenance(record, number)` 可独立取得并核对冻结规程、原值和两区出处。 |
 | `review.shift.shift(db, name)` | 返回指定原班次的有序已签号、峰值、原单位和胜出采集号。空班的峰值字段为 `None`，空白班次抛出 `ValueError`。 |
 
@@ -44,4 +56,5 @@ python3 -B -m unittest discover -s tests
 - `procedure_revisions` 独立保存每个版本。开工同时把该版本完整声明固定在会话里。重复初始化只补缺失的版本。
 - `capture_index` 在槽分配提交成功后公布采集号。分区通知包括会话、号、槽、槽占用实例和区域。由实际匹配的双区组成的完整件持久保存于 `held_captures`，归还按原实例确认。接管失败保留活槽和该会话已接纳的通知。归还确认写入失败时，活设备仍可确认原实例的归还，旧确认不影响新实例。
 - `issued_results` 和 `first_receipts` 同事务提交。每个原波形样值乘以本次允许的正整数倍率。精确整数换算保留符号和原序，绝对峰值取换算后最大绝对值。例 `[-2,4] × 10` 得 `[-20,40]`，峰值 `40 mm/s`。空波形、非整数样值和无效倍率不能签存，全零非空波形峰值为 0。历史领取读取已提交的固定换算值。
+- 触发前换槽的前段正文及其首次实写实例先持久保管于 `trigger_transfers`。换槽成功前，原前段和原凭据保有触发权；目标槽忙、交接回调中断或提交失败都不改变这一点。触发后仅当前槽实例实写的后段可与前段闭合；过时凭据、错绑、改绑的同值原码、重复触发和二次换槽均抛出 `ValueError`。这类成果的 `evidence.trigger_segments` 记录 `((前段原码, 前段实例), (后段原码, 后段实例))`，`waveform` 为顺序拼接的原码。
 - 班表仅由指定原班次的正式成果组成，按采集号升序。比较统一到 µm/s，倍率分别为 `1 mm/s = 1000 µm/s` 和 `1 µm/s = 1 µm/s`。例如 `2500 µm/s` 和 `3 mm/s` 同班时，后者胜出，班峰值显示 `3 mm/s`。物理峰值相同取采集号较小的固定成果。

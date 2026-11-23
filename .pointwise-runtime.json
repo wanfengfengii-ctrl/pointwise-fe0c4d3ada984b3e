@@ -2,6 +2,6 @@
   "version": 1,
   "kind": "cli",
   "setup": [],
-  "verify": ["python3", "-B", "check_project.py"],
-  "demo": ["python3", "-B", "-m", "review.readout", "demo"]
+  "verify": ["python3", "-B", "transfer_fixture.py", "verify"],
+  "demo": ["python3", "-B", "transfer_fixture.py", "demo"]
 }

@@ -4,7 +4,7 @@ from dataclasses import dataclass
 
 from bench.session import RunIndex
 from bench.slots import SlotLease, capture_number
-from capture.completion import CompletedCapture, require_waveform, verify_sources
+from capture.completion import CompletedCapture, require_waveform, verify_capture_sources
 from recipes.limits import require_allowed_multiplier
 
 
@@ -34,7 +34,8 @@ class CustodyStore:
     def commit(self, complete: CompletedCapture) -> HeldCapture:
         index = RunIndex(self.db)
         number = complete.lease.capture_id
-        verify_sources(complete.lease, complete.waveform_source, complete.range_source)
+        verify_capture_sources(complete.lease, complete.waveform, complete.waveform_source,
+                               complete.range_source, complete.trigger_segments)
         require_waveform(complete.waveform)
         require_allowed_multiplier(complete.procedure.limits, complete.multiplier)
         document = json.dumps(complete.as_evidence(), ensure_ascii=False)

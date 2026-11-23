@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 
-from capture.completion import CompletedCapture, require_waveform, verify_sources
+from capture.completion import CompletedCapture, require_waveform, verify_capture_sources
 from capture.custody import HeldCapture
 from recipes.limits import require_allowed_multiplier
 from recipes.revisions import require_name
@@ -31,5 +31,6 @@ def build_reduction_input(number: int, held: HeldCapture) -> ReductionInput:
     require_name(evidence.shift, 'source shift')
     require_waveform(evidence.waveform)
     require_allowed_multiplier(evidence.procedure.limits, evidence.multiplier)
-    verify_sources(evidence.lease, evidence.waveform_source, evidence.range_source)
+    verify_capture_sources(evidence.lease, evidence.waveform, evidence.waveform_source,
+                           evidence.range_source, evidence.trigger_segments)
     return ReductionInput(evidence)

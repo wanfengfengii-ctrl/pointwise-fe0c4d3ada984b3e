@@ -46,6 +46,26 @@ class SlotPool:
     def occupied(self) -> tuple[SlotLease, ...]:
         return tuple(self._active[slot] for slot in self.names if slot in self._active)
 
+    def next_instance(self, name: str) -> int:
+        if name not in self.names:
+            raise ValueError('unknown device slot')
+        return self._generations[name] + 1
+
+    def activate_moved(self, old: SlotLease, new: SlotLease) -> None:
+        """Replace the trigger instance on ``old`` with ``new`` on another slot."""
+        if self._closed:
+            raise ValueError('device is closed')
+        if self._active.get(old.slot) != old:
+            raise ValueError('device slot is not occupied by this instance')
+        if new.slot in self._active:
+            raise SlotsFull(f'device slot {new.slot} is occupied')
+        if new.instance != self._generations[new.slot] + 1:
+            raise ValueError('new instance is not the next generation of the target slot')
+        self._generations[new.slot] = new.instance
+        del self._active[old.slot]
+        self._returned.add(old)
+        self._active[new.slot] = new
+
     def reserve(self, session_id: int, number: int) -> SlotLease:
         if self._closed:
             raise ValueError('device is closed')
@@ -54,12 +74,25 @@ class SlotPool:
             slot = self.names[cursor]
             if slot in self._active:
                 continue
-            lease = SlotLease(session_id, number, slot, self._generations[slot] + 1)
-            self._generations[slot] = lease.instance
-            self._active[slot] = lease
-            self._next = (cursor + 1) % len(self.names)
-            return lease
+            return self._activate(session_id, number, slot, cursor)
         raise SlotsFull('both device slots are occupied')
+
+    def reserve_named(self, session_id: int, number: int, name: str) -> SlotLease:
+        if self._closed:
+            raise ValueError('device is closed')
+        if name not in self.names:
+            raise ValueError('unknown device slot')
+        if name in self._active:
+            raise SlotsFull(f'device slot {name} is occupied')
+        return self._activate(session_id, number, name, None)
+
+    def _activate(self, session_id: int, number: int, slot: str, cursor: int | None) -> SlotLease:
+        lease = SlotLease(session_id, number, slot, self._generations[slot] + 1)
+        self._generations[slot] = lease.instance
+        self._active[slot] = lease
+        if cursor is not None:
+            self._next = (cursor + 1) % len(self.names)
+        return lease
 
     def require_active(self, lease: SlotLease) -> None:
         if self._closed or self._active.get(lease.slot) != lease:

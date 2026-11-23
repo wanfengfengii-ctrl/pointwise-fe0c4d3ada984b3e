@@ -3,6 +3,7 @@ from bench.writer import DeviceWriter, RegionReady, RegionSource
 from capture.completion import assemble_capture, validate_region
 from capture.custody import CustodyStore
 from capture.resume import CaptureStatus, confirm_return
+from capture.transfer import TransferStore, complete_transfer
 
 
 class PendingRegions:
@@ -39,13 +40,24 @@ def deliver(session: BenchSession, event: RegionReady) -> CaptureStatus:
     registration = session.index.get_capture(lease.capture_id)
     if registration is None or registration.lease.session_id != session.session_id:
         raise ValueError('feedback is outside this recording session')
-    validate_region(registration, event)
     store = CustodyStore(session.db)
     held = store.get(lease.capture_id)
+    transfer = TransferStore(session.db).get(lease.capture_id)
     if held is not None:
-        if not held.capture.event_for(event.source.region).matches(event):
+        if not held.capture.accepts_event(event):
             raise ValueError('conflicting feedback for a capture in custody')
+    elif transfer is not None:
+        if transfer.session_id != session.session_id:
+            raise ValueError('feedback is outside this recording session')
+        complete = complete_transfer(session, registration, transfer, event)
+        held = store.commit(complete)
+        TransferStore(session.db).delete(lease.capture_id)
+        session.prepared.discard(lease.capture_id)
+        session.writer.unguard(transfer.prefix_lease)
+        returned = confirm_return(session, lease.capture_id)
+        return CaptureStatus('held', registration, returned)
     else:
+        validate_region(registration, event)
         session.pending.accept(registration, event, session.writer)
         complete = assemble_capture(registration, session.pending.for_capture(lease.capture_id))
         if complete is None:
