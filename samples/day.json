@@ -1,0 +1,19 @@
+{
+  "shift": "day",
+  "channel": "drive-end",
+  "steps": [
+    {"op": "begin", "label": "motor-one"},
+    {"op": "waveform", "label": "motor-one", "values": [2, 4]},
+    {"op": "deliver", "label": "motor-one", "region": "waveform"},
+    {"op": "range", "label": "motor-one", "multiplier": 10},
+    {"op": "deliver", "label": "motor-one", "region": "range"},
+    {"op": "begin", "label": "motor-two"},
+    {"op": "waveform", "label": "motor-two", "values": [7, 8]},
+    {"op": "deliver", "label": "motor-two", "region": "waveform"},
+    {"op": "begin", "label": "motor-three"},
+    {"op": "range", "label": "motor-three", "multiplier": 100},
+    {"op": "waveform", "label": "motor-three", "values": [3, 5]},
+    {"op": "deliver", "label": "motor-three", "region": "range"},
+    {"op": "deliver", "label": "motor-three", "region": "waveform"}
+  ]
+}

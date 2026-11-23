@@ -1,0 +1,10 @@
+[
+  {
+    "name": "motor-vibration",
+    "revision": "1",
+    "channel": "drive-end",
+    "sampling_rate": 1000,
+    "multipliers": [1, 10, 100],
+    "unit": "mm/s"
+  }
+]
